@@ -1,4 +1,4 @@
-# Slack Search Scraper
+# 🐧 Slack Search Scraper
 
 A Python tool for scraping Slack search results and saving them to a file. Built with Playwright for reliable web automation.
 
