@@ -19,10 +19,10 @@ from tqdm import tqdm
 console = Console()
 
 PENGUIN_BANNER = """
-    🐧 Slack Search Scraper 🐧
-    -----------------------
-    Waddle through your Slack history
-    with grace and precision!
+🐧 Penguin - Slack Search Scraper 🐧
+-----------------------------------
+ Waddle through your Slack history
+     with grace and precision!
 """
 
 import os
@@ -43,7 +43,7 @@ async def login_to_slack(page: Page, workspace_url: str, auth_file: str = "slack
         
         try:
             await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=5000)
-            console.print("[green]✨ Already logged in![/green]")
+            console.print("[green]• Already logged in![/green]")
             return True
         except:
             console.print("[yellow]🔑 Need to log in...[/yellow]")
@@ -57,7 +57,7 @@ async def login_to_slack(page: Page, workspace_url: str, auth_file: str = "slack
         try:
             await page.wait_for_url("**/client/*", timeout=120000)
             
-            console.print("[green]🎉 Logged in! Waiting for workspace to load...[/green]")
+            console.print("[green]• Logged in! Waiting for workspace to load...[/green]")
             await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=30000)
             
             await page.wait_for_timeout(5000)
@@ -102,15 +102,12 @@ async def navigate_to_search(page: Page, search_query: str):
         console.print(f"[red]❌ Error during search: {str(e)}[/red]")
         return False
 
-async def scroll_for_messages(page, exporter):
+async def scroll_for_messages(page, exporter, progress=None, task_id=None):
     """Scan for messages while gently scrolling."""
     processed_timestamps = set()
     expected_messages = 20
     no_new_messages_count = 0
     max_attempts_without_messages = 100  # With 100ms delay, this is 10 seconds
-    
-    console.print("\n[cyan]🔄 Scrolling gently and scanning for messages...[/cyan]")
-    console.print(f"[cyan]🔍 Looking for up to {expected_messages} messages[/cyan]\n")
     
     try:
         # Move mouse to middle of viewport for scrolling
@@ -133,13 +130,13 @@ async def scroll_for_messages(page, exporter):
                         message_info = await extract_message_info(group)
                         if message_info:
                             exporter.write_message(message_info)
-                            console.print(f"[green]✨ Found and saved message {len(processed_timestamps)} of {expected_messages}[/green]")
+                            if progress and task_id is not None:
+                                progress.update(task_id, completed=len(processed_timestamps))
             
             # Check if we found any new messages
             if len(processed_timestamps) == prev_count:
                 no_new_messages_count += 1
                 if no_new_messages_count >= max_attempts_without_messages:
-                    console.print(f"\n[cyan]🔄 No new messages found after {no_new_messages_count/10:.1f} seconds, assuming end of page[/cyan]")
                     break
             else:
                 no_new_messages_count = 0
@@ -155,7 +152,6 @@ async def scroll_for_messages(page, exporter):
         console.print(f"[red]❌ Error during scan: {str(e)}[/red]")
         return len(processed_timestamps)
     
-    console.print(f"\n[cyan]📊 Total messages found: {len(processed_timestamps)}[/cyan]")
     return len(processed_timestamps)
 
 async def navigate_to_next_page(page: Page) -> bool:
@@ -165,16 +161,16 @@ async def navigate_to_next_page(page: Page) -> bool:
         next_button = await page.query_selector('[aria-label="Next page"], [data-qa="pagination_next"]')
         
         if not next_button:
-            console.print("[yellow]🔴 No next page button found[/yellow]")
+            console.print("[yellow]🛑 No next page button found[/yellow]")
             return False
             
         # Check if it's disabled
         is_disabled = await next_button.get_attribute('disabled') or await next_button.get_attribute('aria-disabled')
         if is_disabled:
-            console.print("[yellow]🔴 Next page button is disabled[/yellow]")
+            console.print("[yellow]🛑 Next page button is disabled[/yellow]")
             return False
             
-        console.print("[green]🔄 Moving to next page...[/green]")
+        console.print("[cyan]🔄 Moving to next page...[/cyan]")
         await next_button.click()
         
         # Wait for new results to load
@@ -354,6 +350,161 @@ async def get_total_results_count(page: Page) -> int:
         console.print(f"[red]❌ Error getting total count: {str(e)}[/red]")
         return 0
 
+async def extract_message_info(message_group):
+    """Extract message information from a message group element."""
+    # Find the message element within the group - it's inside the actions container
+    message_element = await message_group.query_selector('.c-message_kit__actions .c-search_message')
+    if not message_element:
+        return None
+        
+    # Get timestamp from the link element with class c-timestamp
+    timestamp_element = await message_element.query_selector('.c-search_message__content a.c-timestamp')
+    if not timestamp_element:
+        return None
+        
+    # Get the data-ts attribute which contains the Unix timestamp
+    timestamp = await timestamp_element.get_attribute('data-ts')
+    if not timestamp:
+        return None
+        
+    # Get sender from button with class c-message__sender_button
+    sender_element = await message_element.query_selector('.c-search_message__content button.c-message__sender_button')
+    if not sender_element:
+        return None
+    sender = await sender_element.text_content()
+    
+    # Get text content from p-rich_text_section
+    text_element = await message_element.query_selector('.c-message__message_blocks .p-rich_text_section')
+    if not text_element:
+        return None
+    text = await text_element.text_content()
+    
+    # Get channel name from the message group header
+    channel_element = await message_group.query_selector('.c-channel_entity__name')
+    channel = None
+    if channel_element:
+        channel = await channel_element.text_content()
+    else:
+        # Fallback to extracting from timestamp URL if header not found
+        href = await timestamp_element.get_attribute('href')
+        if href:
+            match = re.search(r'/archives/([^/]+)/', href)
+            if match:
+                channel = match.group(1)
+
+    return {
+        'timestamp': float(timestamp),
+        'sender': sender,
+        'text': text,
+        'channel': channel
+    }
+
+async def process_message(page, message_group, exporter):
+    """Process a single message."""
+    try:
+        # Extract message info using our helper function
+        message_info = await extract_message_info(message_group)
+        if message_info:
+            exporter.write_message(message_info)
+            
+    except Exception as e:
+        console.print(f"[red]❌ Error processing message: {e}[/red]")
+
+async def process_messages(page: Page, exporter: 'SlackSearchExport') -> int:
+    """Process messages from the current page."""
+    messages_found = 0
+    try:
+        message_groups = await page.query_selector_all('[data-qa="virtual-list-item"]')
+        
+        if not message_groups:
+            return 0
+        
+        valid_messages = []
+        for message_group in message_groups:
+            try:
+                message_info = await extract_message_info(message_group)
+                if message_info:
+                    valid_messages.append((message_group, message_info))
+            except Exception as e:
+                # Skip silently - these are usually just non-message elements
+                continue
+        
+        if not valid_messages:
+            return 0
+            
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task("[cyan]Processing messages...", total=len(valid_messages))
+            
+            for _, message_info in valid_messages:
+                try:
+                    messages_found += 1
+                    exporter.write_message(message_info)
+                    progress.update(task, advance=1)
+                except Exception as e:
+                    console.print(f"[yellow]⚠️  Failed to save message: {str(e)}[/yellow]")
+                    continue
+                    
+        return messages_found
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error processing messages: {str(e)}[/red]")
+        return messages_found
+
+async def process_search_results(page: Page, exporter: 'SlackSearchExport'):
+    """Process all pages of search results."""
+    page_num = 1
+    total_messages = 0
+    start_time = time.time()
+    
+    try:
+        while True:
+            console.print(f"\n[cyan]📄 Processing page {page_num}...[/cyan]")
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[cyan]📥 Processing messages..."),
+                BarColumn(complete_style="cyan", finished_style="green"),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("({task.completed}/{task.total} messages)"),
+                console=console
+            ) as progress:
+                task = progress.add_task("", total=20)  # Expected messages per page
+                
+                messages_found = await scroll_for_messages(page, exporter, progress, task)
+                progress.update(task, completed=messages_found)
+                total_messages += messages_found
+                
+                if messages_found == 0 or not await navigate_to_next_page(page):
+                    break
+                    
+                page_num += 1
+            
+        elapsed_time = time.time() - start_time
+        console.print(Panel.fit(
+            f"[green]📬 Search Complete![/green]\n"
+            f"[cyan]📊 Statistics:[/cyan]\n"
+            f"   • Pages processed: {page_num}\n"
+            f"   • Messages found: {total_messages}\n"
+            f"   • Time taken: {elapsed_time:.1f} seconds\n"
+            f"   • Messages per second: {total_messages/elapsed_time:.1f}\n"
+            f"[blue]📁 Output saved to: {exporter.filename}[/blue]",
+            title="🐧 Summary",
+            border_style="cyan"
+        ))
+        
+    except KeyboardInterrupt:
+        console.print("\n[yellow]🛑 Gracefully stopping...[/yellow]")
+        raise
+    except Exception as e:
+        console.print(f"\n[red]❌ Error: {e}[/red]")
+        raise
+
 class SlackSearchExport:
     """Class to handle exporting Slack search results."""
     def __init__(self, output_file=None, output_format='text'):
@@ -400,161 +551,8 @@ class SlackSearchExport:
         self.file.flush()
         self.file.close()
 
-async def extract_message_info(message_group):
-    """Extract message information from a message group element."""
-    try:
-        # Find the message element within the group - it's inside the actions container
-        message_element = await message_group.query_selector('.c-message_kit__actions .c-search_message')
-        if not message_element:
-            console.print("[yellow]⚠️  No message element found in group[/yellow]")
-            return None
-            
-        # Get timestamp from the link element with class c-timestamp
-        timestamp_element = await message_element.query_selector('.c-search_message__content a.c-timestamp')
-        if not timestamp_element:
-            console.print("[yellow]⚠️  No timestamp element found[/yellow]")
-            return None
-            
-        # Get the data-ts attribute which contains the Unix timestamp
-        timestamp = await timestamp_element.get_attribute('data-ts')
-        if not timestamp:
-            console.print("[yellow]⚠️  No timestamp attribute found[/yellow]")
-            return None
-            
-        # Get sender from button with class c-message__sender_button
-        sender_element = await message_element.query_selector('.c-search_message__content button.c-message__sender_button')
-        if not sender_element:
-            console.print("[yellow]⚠️  No sender element found[/yellow]")
-            return None
-        sender = await sender_element.text_content()
-        
-        # Get text content from p-rich_text_section
-        text_element = await message_element.query_selector('.c-message__message_blocks .p-rich_text_section')
-        if not text_element:
-            console.print("[yellow]⚠️  No text element found[/yellow]")
-            return None
-        text = await text_element.text_content()
-        
-        # Get channel name from the message group header
-        channel_element = await message_group.query_selector('.c-channel_entity__name')
-        channel = None
-        if channel_element:
-            channel = await channel_element.text_content()
-        else:
-            # Fallback to extracting from timestamp URL if header not found
-            href = await timestamp_element.get_attribute('href')
-            if href:
-                match = re.search(r'/archives/([^/]+)/', href)
-                if match:
-                    channel = match.group(1)
-
-        return {
-            'timestamp': float(timestamp),
-            'sender': sender,
-            'text': text,
-            'channel': channel
-        }
-    except Exception as e:
-        console.print(f"[red]❌ Error extracting message info: {e}[/red]")
-        return None
-
-async def process_message(page, message_group, exporter):
-    """Process a single message."""
-    try:
-        # Extract message info using our helper function
-        message_info = await extract_message_info(message_group)
-        if message_info:
-            exporter.write_message(message_info)
-            
-    except Exception as e:
-        console.print(f"[red]❌ Error processing message: {e}[/red]")
-
-async def process_messages(page: Page, exporter: 'SlackSearchExport') -> int:
-    """Process messages from the current page."""
-    messages_found = 0
-    try:
-        message_groups = await page.query_selector_all('[data-qa="virtual-list-item"]')
-        
-        if not message_groups:
-            return 0
-            
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console
-        ) as progress:
-            task = progress.add_task("[cyan]Processing messages...", total=len(message_groups))
-            
-            for message_group in message_groups:
-                try:
-                    message_info = await extract_message_info(message_group)
-                    if message_info:
-                        messages_found += 1
-                        exporter.write_message(message_info)
-                        progress.update(task, advance=1)
-                except Exception as e:
-                    console.print(f"[yellow]⚠️  Skipped message: {e}[/yellow]")
-                    progress.update(task, advance=1)
-                    continue
-                    
-        return messages_found
-        
-    except Exception as e:
-        console.print(f"[red]❌ Error processing messages: {e}[/red]")
-        return messages_found
-
-async def process_search_results(page: Page, exporter: 'SlackSearchExport'):
-    """Process all pages of search results."""
-    page_num = 1
-    total_messages = 0
-    start_time = time.time()
-    
-    try:
-        while True:
-            console.print(f"\n[cyan]📄 Processing page {page_num}...[/cyan]")
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                console=console
-            ) as progress:
-                scroll_task = progress.add_task("[cyan]Scrolling gently...", total=None)
-                await scroll_for_messages(page, exporter)
-                progress.update(scroll_task, completed=True)
-            
-            messages_on_page = await process_messages(page, exporter)
-            total_messages += messages_on_page
-            
-            if messages_on_page == 0 or not await navigate_to_next_page(page):
-                break
-                
-            page_num += 1
-            
-        elapsed_time = time.time() - start_time
-        console.print(Panel.fit(
-            f"[green]✨ Search Complete![/green]\n"
-            f"[cyan]📊 Statistics:[/cyan]\n"
-            f"   • Pages processed: {page_num}\n"
-            f"   • Messages found: {total_messages}\n"
-            f"   • Time taken: {elapsed_time:.1f} seconds\n"
-            f"   • Messages per second: {total_messages/elapsed_time:.1f}\n"
-            f"[blue]📁 Output saved to: {exporter.filename}[/blue]",
-            title="🐧 Summary",
-            border_style="cyan"
-        ))
-        
-    except KeyboardInterrupt:
-        console.print("\n[yellow]🛑 Gracefully stopping...[/yellow]")
-        raise
-    except Exception as e:
-        console.print(f"\n[red]❌ Error: {e}[/red]")
-        raise
-
 async def main():
-    parser = argparse.ArgumentParser(description="🐧 Slack Search Scraper - Export your Slack search results")
+    parser = argparse.ArgumentParser(description="🐧 Penguin - Slack Search Scraper - Export your Slack search results")
     parser.add_argument('query', help='Search query to use')
     parser.add_argument('--workspace', help='Slack workspace URL', default='https://app.slack.com/client')
     parser.add_argument('--format', choices=['text', 'json'], default='text', help='Output format')
@@ -565,58 +563,66 @@ async def main():
     
     console.print(Panel.fit(PENGUIN_BANNER, border_style="cyan"))
     
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(storage_state=args.auth_file if os.path.exists(args.auth_file) else None)
-        page = await context.new_page()
-        
-        try:
+    browser = None
+    context = None
+    page = None
+    exporter = None
+    
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            context = await browser.new_context(storage_state=args.auth_file if os.path.exists(args.auth_file) else None)
+            page = await context.new_page()
+            
             exporter = SlackSearchExport(args.output, args.format)
             
             if not await login_to_slack(page, args.workspace, args.auth_file):
                 console.print("[red]❌ Failed to log in to Slack[/red]")
                 return
-                
+            
             console.print(f"[cyan]🔍 Searching for: {args.query}[/cyan]")
             
             if not await navigate_to_search(page, args.query):
                 console.print("[red]❌ Failed to perform search[/red]")
                 return
             
-            total_results = await get_total_results_count(page)
-            if total_results > 0:
-                console.print(f"[cyan]📊 Found {total_results} total results[/cyan]")
+            await process_search_results(page, exporter)
             
-            page_num = 1
-            while True:
-                console.print(f"\n[cyan]📄 Processing page {page_num}...[/cyan]")
-                
-                try:
-                    messages_found = await scroll_for_messages(page, exporter)
-                    if messages_found == 0:
-                        console.print("[yellow]⚠️  No messages found on this page[/yellow]")
-                    
-                    if not await navigate_to_next_page(page):
-                        break
-                        
-                    page_num += 1
+    except KeyboardInterrupt:
+        console.print("\n[yellow]🛑 Gracefully shutting down...[/yellow]")
+    except Exception as e:
+        console.print(f"\n[red]❌ Error: {str(e)}[/red]")
+    finally:
+        if exporter:
+            try:
+                exporter.close()
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Warning: Could not close exporter: {str(e)}[/yellow]")
+        
+        # Close browser resources in reverse order
+        try:
+            if page:
+                await page.close()
+        except Exception:
+            pass
             
-                except KeyboardInterrupt:
-                    console.print("\n[yellow]🛑 Stopped by user[/yellow]")
-                    break
-                    
-        except KeyboardInterrupt:
-            console.print("\n[yellow]🛑 Stopped by user[/yellow]")
-        finally:
-            exporter.close()
-            await browser.close()
-            await context.close()
+        try:
+            if context:
+                await context.close()
+        except Exception:
+            pass
             
+        try:
+            if browser:
+                await browser.close()
+        except Exception:
+            pass
+
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        console.print("\n[yellow]👋 Goodbye! Thanks for using Slack Search Scraper![/yellow]")
+        console.print("\n[yellow]👋 Goodbye! Thanks for using Penguin![/yellow]")
     except Exception as e:
-        console.print(f"\n[red]❌ Fatal error: {e}[/red]")
-        raise
+        console.print(f"\n[red]❌ Fatal error: {str(e)}[/red]")
+        console.print("[yellow]Don't worry - your messages were saved! 📝[/yellow]")
