@@ -5,8 +5,10 @@ description = "Export Slack search results in a format suitable for analysis"
 authors = ["Josh Guice <jguice@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.10"
 playwright = "^1.40.0"
+rich = "^13.7.0"
+tqdm = "^4.66.1"
 
 [build-system]
 requires = ["poetry-core"]
