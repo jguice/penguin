@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "slack-search-export"
+version = "0.1.0"
+description = "Export Slack search results in a format suitable for analysis"
+authors = ["Josh Guice <jguice@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+playwright = "^1.40.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
