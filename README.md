@@ -21,16 +21,21 @@ git clone https://github.com/jguice/penguin.git
 cd penguin
 ```
 
-2. Install dependencies:
+2. Install Poetry (if you haven't already):
 ```bash
-pip install -r requirements.txt
-playwright install
+curl -sSL https://install.python-poetry.org | python3 -
+```
+
+3. Install dependencies:
+```bash
+poetry install
+poetry run playwright install
 ```
 
 ## Usage
 
 ```bash
-python slack_search_scraper.py "your search query"
+poetry run python slack_search_scraper.py "your search query"
 ```
 
 ### First Run Authentication
