@@ -34,8 +34,27 @@ poetry run playwright install
 
 ## Usage
 
+Basic usage:
 ```bash
 poetry run python slack_search_scraper.py "your search query"
+```
+
+All available options:
+```bash
+poetry run python slack_search_scraper.py [options] "search query"
+
+Options:
+  --workspace WORKSPACE  Slack workspace URL (default: https://app.slack.com/client)
+  --format {text,json}  Output format (default: text)
+  --output OUTPUT       Output file (default: slack_export_[timestamp].txt)
+  --auth-file AUTH_FILE Path to save/load authentication (default: slack_auth.json)
+  --verbose            Enable verbose debug output
+  -h, --help           Show this help message and exit
+```
+
+Example with options:
+```bash
+poetry run python slack_search_scraper.py --format json --output my_search.json "from:@user after:2023-01-01"
 ```
 
 ### First Run Authentication
@@ -52,8 +71,16 @@ After the first successful login, authentication will be automatic for subsequen
 - Queries with spaces might be modified by Slack's autocomplete
 - The actual search performed might differ from your exact input
 - You may need to adjust your query to achieve the desired search
+- Slack limits search results to 100 pages (~2000 messages), so for large exports you may need multiple runs with different date ranges
 
 For example, searching for "John Smith" might be processed differently than expected. Try variations or check Slack's web interface to see how your query is interpreted.
+
+**Tip**: For large exports, break up your search into smaller date ranges:
+```bash
+# Example: Export messages for each quarter
+poetry run python slack_search_scraper.py "from:@user after:2023-01-01 before:2023-04-01"
+poetry run python slack_search_scraper.py "from:@user after:2023-04-01 before:2023-07-01"
+```
 
 ## 📦 Output
 Results are saved to a text file with a timestamp in the filename:

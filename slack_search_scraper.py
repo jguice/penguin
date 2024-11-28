@@ -127,7 +127,7 @@ async def scroll_for_messages(page, exporter, progress=None, task_id=None):
                     if timestamp and timestamp not in processed_timestamps:
                         processed_timestamps.add(timestamp)
                         # Extract and write message immediately
-                        message_info = await extract_message_info(group)
+                        message_info = await extract_message_info(page, group)  
                         if message_info:
                             exporter.write_message(message_info)
                             if progress and task_id is not None:
@@ -350,65 +350,121 @@ async def get_total_results_count(page: Page) -> int:
         console.print(f"[red]❌ Error getting total count: {str(e)}[/red]")
         return 0
 
-async def extract_message_info(message_group):
+async def extract_message_info(page, message_group):
     """Extract message information from a message group element."""
-    # Find the message element within the group - it's inside the actions container
-    message_element = await message_group.query_selector('.c-message_kit__actions .c-search_message')
-    if not message_element:
-        return None
+    try:
+        # Find the message element within the group - it's inside the actions container
+        message_element = await message_group.query_selector('.c-message_kit__actions .c-search_message')
+        if not message_element:
+            return None
+            
+        # Get timestamp from the link element with class c-timestamp
+        timestamp_element = await message_element.query_selector('.c-search_message__content a.c-timestamp')
+        if not timestamp_element:
+            return None
+            
+        # Get the data-ts attribute which contains the Unix timestamp
+        timestamp = await timestamp_element.get_attribute('data-ts')
+        if not timestamp:
+            return None
+            
+        # Get sender from button with class c-message__sender_button
+        sender_element = await message_element.query_selector('.c-search_message__content button.c-message__sender_button')
+        if not sender_element:
+            return None
+        sender = await sender_element.text_content()
         
-    # Get timestamp from the link element with class c-timestamp
-    timestamp_element = await message_element.query_selector('.c-search_message__content a.c-timestamp')
-    if not timestamp_element:
-        return None
+        # Check for and click "Show more" button if present
+        try:
+            # Look specifically for buttons containing "Show more" text
+            show_more_selectors = [
+                'button:has-text("Show more")',
+                'button.c-link--button:has-text("Show more")',
+                '[data-qa="message-preview-show-more-button"]',
+                'button[aria-label*="Show more"]'
+            ]
+            
+            for selector in show_more_selectors:
+                show_more = await message_element.query_selector(selector)
+                if show_more:
+                    button_text = await show_more.text_content()
+                    if "Show more" in button_text:
+                        if args.verbose:
+                            console.print("[blue]🔍 Found and expanding truncated message[/blue]")
+                        
+                        # Click and wait for content update
+                        await show_more.click()
+                        await page.wait_for_timeout(1000)  
+                        
+                        # Wait for any loading spinners to disappear
+                        try:
+                            await page.wait_for_selector('.c-loading_spinner', state='hidden', timeout=2000)
+                        except:
+                            pass  # No spinner found, that's okay
+                        
+                        break  # Exit loop if we found and clicked a button
+                    
+        except Exception as e:
+            if "Element is not attached to the DOM" in str(e):
+                # This is expected sometimes when the page updates during scanning
+                if args.verbose:
+                    console.print("[yellow]⚠️  Message content changed during processing - this is normal[/yellow]")
+            else:
+                # Show other click errors as warnings since they might indicate an issue
+                console.print(f"[yellow]⚠️  Could not expand message: {str(e)}[/yellow]")
         
-    # Get the data-ts attribute which contains the Unix timestamp
-    timestamp = await timestamp_element.get_attribute('data-ts')
-    if not timestamp:
-        return None
+        # Get text content from all p-rich_text_section elements
+        text_elements = await message_element.query_selector_all('.c-message__message_blocks .p-rich_text_section')
+        if not text_elements:
+            return None
         
-    # Get sender from button with class c-message__sender_button
-    sender_element = await message_element.query_selector('.c-search_message__content button.c-message__sender_button')
-    if not sender_element:
-        return None
-    sender = await sender_element.text_content()
-    
-    # Get text content from p-rich_text_section
-    text_element = await message_element.query_selector('.c-message__message_blocks .p-rich_text_section')
-    if not text_element:
-        return None
-    text = await text_element.text_content()
-    
-    # Get channel name from the message group header
-    channel_element = await message_group.query_selector('.c-channel_entity__name')
-    channel = None
-    if channel_element:
-        channel = await channel_element.text_content()
-    else:
-        # Fallback to extracting from timestamp URL if header not found
-        href = await timestamp_element.get_attribute('href')
-        if href:
-            match = re.search(r'/archives/([^/]+)/', href)
-            if match:
-                channel = match.group(1)
+        # Combine text from all sections
+        text_parts = []
+        for elem in text_elements:
+            part = await elem.text_content()
+            if part:
+                text_parts.append(part.strip())
+        text = ' '.join(text_parts)
+        
+        # Debug log the text length
+        if args.verbose:
+            console.print(f"[blue]📏 Message length: {len(text)} characters[/blue]")
+        
+        # Get channel name from the message group header
+        channel_element = await message_group.query_selector('.c-channel_entity__name')
+        channel = None
+        if channel_element:
+            channel = await channel_element.text_content()
+        else:
+            # Fallback to extracting from timestamp URL if header not found
+            href = await timestamp_element.get_attribute('href')
+            if href:
+                match = re.search(r'/archives/([^/]+)/', href)
+                if match:
+                    channel = match.group(1)
 
-    return {
-        'timestamp': float(timestamp),
-        'sender': sender,
-        'text': text,
-        'channel': channel
-    }
+        return {
+            'timestamp': float(timestamp),
+            'sender': sender,
+            'text': text,
+            'channel': channel
+        }
+    except Exception as e:
+        if args.verbose:
+            console.print(f"[blue]❌ Error extracting message info: {str(e)}[/blue]")
+        return None
 
 async def process_message(page, message_group, exporter):
     """Process a single message."""
     try:
         # Extract message info using our helper function
-        message_info = await extract_message_info(message_group)
+        message_info = await extract_message_info(page, message_group)  
         if message_info:
             exporter.write_message(message_info)
             
     except Exception as e:
-        console.print(f"[red]❌ Error processing message: {e}[/red]")
+        if args.verbose:
+            console.print(f"[blue]❌ Error processing message: {e}[/blue]")
 
 async def process_messages(page: Page, exporter: 'SlackSearchExport') -> int:
     """Process messages from the current page."""
@@ -422,7 +478,7 @@ async def process_messages(page: Page, exporter: 'SlackSearchExport') -> int:
         valid_messages = []
         for message_group in message_groups:
             try:
-                message_info = await extract_message_info(message_group)
+                message_info = await extract_message_info(page, message_group)
                 if message_info:
                     valid_messages.append((message_group, message_info))
             except Exception as e:
@@ -447,13 +503,15 @@ async def process_messages(page: Page, exporter: 'SlackSearchExport') -> int:
                     exporter.write_message(message_info)
                     progress.update(task, advance=1)
                 except Exception as e:
-                    console.print(f"[yellow]⚠️  Failed to save message: {str(e)}[/yellow]")
+                    if args.verbose:
+                        console.print(f"[blue]⚠️  Failed to save message: {str(e)}[/blue]")
                     continue
                     
         return messages_found
         
     except Exception as e:
-        console.print(f"[red]❌ Error processing messages: {str(e)}[/red]")
+        if args.verbose:
+            console.print(f"[blue]❌ Error processing messages: {str(e)}[/blue]")
         return messages_found
 
 async def process_search_results(page: Page, exporter: 'SlackSearchExport'):
@@ -502,7 +560,8 @@ async def process_search_results(page: Page, exporter: 'SlackSearchExport'):
         console.print("\n[yellow]🛑 Gracefully stopping...[/yellow]")
         raise
     except Exception as e:
-        console.print(f"\n[red]❌ Error: {e}[/red]")
+        if args.verbose:
+            console.print(f"\n[blue]❌ Error: {e}[/blue]")
         raise
 
 class SlackSearchExport:
@@ -542,7 +601,8 @@ class SlackSearchExport:
             self.file.flush()  # Ensure message is written immediately
             
         except Exception as e:
-            console.print(f"[red]❌ Error writing message: {e}[/red]")
+            if args.verbose:
+                console.print(f"[blue]❌ Error writing message: {e}[/blue]")
             
     def close(self):
         """Finalize the file (especially important for JSON format)."""
@@ -558,7 +618,9 @@ async def main():
     parser.add_argument('--format', choices=['text', 'json'], default='text', help='Output format')
     parser.add_argument('--output', help='Output file (default: slack_export_[timestamp].txt)')
     parser.add_argument('--auth-file', default='slack_auth.json', help='Path to save/load authentication')
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose debug output')
     
+    global args
     args = parser.parse_args()
     
     console.print(Panel.fit(PENGUIN_BANNER, border_style="cyan"))
@@ -591,13 +653,15 @@ async def main():
     except KeyboardInterrupt:
         console.print("\n[yellow]🛑 Gracefully shutting down...[/yellow]")
     except Exception as e:
-        console.print(f"\n[red]❌ Error: {str(e)}[/red]")
+        if args.verbose:
+            console.print(f"\n[blue]❌ Error: {e}[/blue]")
     finally:
         if exporter:
             try:
                 exporter.close()
             except Exception as e:
-                console.print(f"[yellow]⚠️  Warning: Could not close exporter: {str(e)}[/yellow]")
+                if args.verbose:
+                    console.print(f"[blue]⚠️  Warning: Could not close exporter: {str(e)}[/blue]")
         
         # Close browser resources in reverse order
         try:
@@ -624,5 +688,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         console.print("\n[yellow]👋 Goodbye! Thanks for using Penguin![/yellow]")
     except Exception as e:
-        console.print(f"\n[red]❌ Fatal error: {str(e)}[/red]")
+        if args.verbose:
+            console.print(f"\n[blue]❌ Fatal error: {str(e)}[/blue]")
         console.print("[yellow]Don't worry - your messages were saved! 📝[/yellow]")
