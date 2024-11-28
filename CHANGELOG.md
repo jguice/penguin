@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/jguice/penguin/compare/v1.1.1...v1.2.0) (2024-11-28)
+
+
+### Features
+
+* expand truncated messages and add verbose mode ([994fcca](https://github.com/jguice/penguin/commit/994fccaf615fc66e9fa50d394cb071e24f53581a))
+
 ## [1.1.1](https://github.com/jguice/penguin/compare/v1.1.0...v1.1.1) (2024-11-28)
 
 
