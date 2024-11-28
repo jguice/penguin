@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/jguice/penguin/compare/v1.1.0...v1.1.1) (2024-11-28)
+
+
+### Bug Fixes
+
+* update license link to point to GitHub ([6654157](https://github.com/jguice/penguin/commit/6654157c817127a4897ffef5f87a252968de8e0f))
+
 # [1.1.0](https://github.com/jguice/penguin/compare/v1.0.0...v1.1.0) (2024-11-27)
 
 
