@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/jguice/penguin/compare/v1.2.0...v1.3.0) (2024-11-29)
+
+
+### Features
+
+* improve message formatting with html2text ([5862baf](https://github.com/jguice/penguin/commit/5862baf2450f91941171ae8e1b8622de56365f7b))
+
 # [1.2.0](https://github.com/jguice/penguin/compare/v1.1.1...v1.2.0) (2024-11-28)
 
 
