@@ -54,4 +54,4 @@ search_error.png
 
 # Slack Search Export
 *.json
-slack_export_*.txt
+*.txt
