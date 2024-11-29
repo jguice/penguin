@@ -1,3 +1,15 @@
+# [1.3.0](https://github.com/jguice/penguin/compare/v1.2.0...v1.3.0) (2024-11-29)
+
+
+### Bug Fixes
+
+* ignore all .txt files ([cc0c4f8](https://github.com/jguice/penguin/commit/cc0c4f829e4ba09c938313e6b8e9e1a2fc243338))
+
+
+### Features
+
+* improve message formatting with html2text ([38303c9](https://github.com/jguice/penguin/commit/38303c90c132699e2c91b6af1040093a5bc6d24a))
+
 # [1.2.0](https://github.com/jguice/penguin/compare/v1.1.1...v1.2.0) (2024-11-28)
 
 
