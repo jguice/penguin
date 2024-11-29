@@ -14,6 +14,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich import print as rprint
 from tqdm import tqdm
+import html2text
 
 # Initialize rich console
 console = Console()
@@ -394,7 +395,7 @@ async def extract_message_info(page, message_group):
                         
                         # Click and wait for content update
                         await show_more.click()
-                        await page.wait_for_timeout(1000)  
+                        await page.wait_for_timeout(1000)
                         
                         # Wait for any loading spinners to disappear
                         try:
@@ -413,22 +414,54 @@ async def extract_message_info(page, message_group):
                 # Show other click errors as warnings since they might indicate an issue
                 console.print(f"[yellow]⚠️  Could not expand message: {str(e)}[/yellow]")
         
-        # Get text content from all p-rich_text_section elements
-        text_elements = await message_element.query_selector_all('.c-message__message_blocks .p-rich_text_section')
-        if not text_elements:
-            return None
-        
-        # Combine text from all sections
+        # Get text content from all message blocks, handling different formats
         text_parts = []
-        for elem in text_elements:
-            part = await elem.text_content()
-            if part:
-                text_parts.append(part.strip())
-        text = ' '.join(text_parts)
         
-        # Debug log the text length
+        # Get all message blocks
+        blocks = await message_element.query_selector_all('.c-message__message_blocks > div')
+        
+        if args.verbose:
+            console.print(f"[blue]Found {len(blocks)} message blocks[/blue]")
+        
+        for block in blocks:
+            if args.verbose:
+                html = await block.evaluate('(element) => element.outerHTML')
+                console.print(f"[yellow]Block HTML:[/yellow]\n{html}")
+            
+            # Get the HTML content
+            html = await block.evaluate('(element) => element.outerHTML')
+            
+            # Configure html2text
+            h = html2text.HTML2Text()
+            h.body_width = 0  # Don't wrap lines
+            h.unicode_snob = True  # Use Unicode characters
+            h.ul_item_mark = "*"  # Use * for unordered lists
+            h.ignore_links = True  # Don't show URLs for links
+            h.protect_links = True  # Don't wrap links in <>
+            h.single_line_break = True  # Use single line breaks
+            
+            # Convert HTML to markdown
+            text = h.handle(html)
+            
+            if text and text.strip():
+                text_parts.append(text.strip())
+
+        # Join all parts with appropriate spacing
+        text = '\n'.join(text_parts)
+
+        # Clean up the text
+        text = text.replace('\n\n\n', '\n\n')  # Remove extra blank lines
+        text = re.sub(r'\n\s*\n', '\n\n', text)  # Normalize multiple blank lines
+        text = text.replace('☝', ':point_up:')  # Convert emoji back to Slack format
+        text = text.replace('☺', ':relaxed:')
+        text = text.replace('_', '*')  # Convert underscores to asterisks for consistency
+        
         if args.verbose:
             console.print(f"[blue]📏 Message length: {len(text)} characters[/blue]")
+            console.print(f"[green]Message parts: {len(text_parts)}[/green]")
+            console.print("[cyan]Message parts:[/cyan]")
+            for part in text_parts:
+                console.print(f"[cyan]- {part}[/cyan]")
         
         # Get channel name from the message group header
         channel_element = await message_group.query_selector('.c-channel_entity__name')

@@ -16,9 +16,11 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual Environment
 .env
@@ -26,6 +28,8 @@ wheels/
 env/
 venv/
 ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .idea/
@@ -33,12 +37,21 @@ ENV/
 *.swp
 *.swo
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
 # Project specific
 .auth/
 playwright-report/
 
 # Output files
-*.txt
 error.png
 search_error.png
-slack_auth.json
+
+# Slack Search Export
+*.json
+slack_export_*.txt
