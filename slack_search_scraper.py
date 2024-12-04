@@ -59,9 +59,9 @@ async def login_to_slack(page: Page, workspace_url: str, auth_file: str = "slack
             await page.wait_for_url("**/client/*", timeout=120000)
             
             console.print("[green]• Logged in! Waiting for workspace to load...[/green]")
-            await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=30000)
+            await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=120000)
             
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(10000)
             
             console.print(f"[blue]💾 Saving authentication state to {auth_file}[/blue]")
             await page.context.storage_state(path=auth_file)
@@ -80,7 +80,7 @@ async def navigate_to_search(page: Page, search_query: str):
     """Navigate to search results page."""
     try:
         # Wait for the workspace to fully load
-        search_button = await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=30000)
+        search_button = await page.wait_for_selector('[data-qa="top_nav_search"]', timeout=120000)
         
         if not search_button:
             raise Exception("Could not find search button")
@@ -95,7 +95,7 @@ async def navigate_to_search(page: Page, search_query: str):
         await page.keyboard.press('Enter')
         
         console.print("[green]🔍 Waiting for results to load...[/green]")
-        await page.wait_for_selector('.c-search_message__content', timeout=30000)
+        await page.wait_for_selector('.c-search_message__content', timeout=120000)
         
         return True
         
@@ -175,7 +175,7 @@ async def navigate_to_next_page(page: Page) -> bool:
         await next_button.click()
         
         # Wait for new results to load
-        await page.wait_for_selector('.c-search_message__content', timeout=30000)
+        await page.wait_for_selector('.c-search_message__content', timeout=120000)
         await page.wait_for_timeout(2000)  # Extra wait for stability
         
         return True
