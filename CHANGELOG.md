@@ -1,3 +1,28 @@
+# [2.0.0](https://github.com/jguice/penguin/compare/v1.2.0...v2.0.0) (2024-12-04)
+
+
+* fix!: increase timeouts for Slack workspace and search operations ([35310d1](https://github.com/jguice/penguin/commit/35310d1def54132e19ecad6fe21a5a3d96a2c96c))
+
+
+### Bug Fixes
+
+* ignore all .txt files ([cc0c4f8](https://github.com/jguice/penguin/commit/cc0c4f829e4ba09c938313e6b8e9e1a2fc243338))
+
+
+### Features
+
+* improve message formatting with html2text ([38303c9](https://github.com/jguice/penguin/commit/38303c90c132699e2c91b6af1040093a5bc6d24a))
+
+
+### BREAKING CHANGES
+
+* Significantly increased timeouts may affect automation workflows
+
+Increase timeouts to improve reliability:
+- Workspace loading timeout: 30s -> 120s
+- Post-login wait: 5s -> 10s
+- Search operation timeouts: 30s -> 120s
+
 # [1.3.0](https://github.com/jguice/penguin/compare/v1.2.0...v1.3.0) (2024-11-29)
 
 
