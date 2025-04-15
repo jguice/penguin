@@ -96,7 +96,40 @@ async def navigate_to_search(page: Page, search_query: str):
         
         console.print("[green]🔍 Waiting for results to load...[/green]")
         await page.wait_for_selector('.c-search_message__content', timeout=120000)
-        
+
+        # Ensure sort order is set to Oldest
+        try:
+            # Find the sort button by class and child span text
+            sort_button = await page.query_selector('//button[contains(@class, "p-search_filter__trigger_button") and .//span[contains(text(), "Sort:")]]')
+            if sort_button:
+                sort_text = await sort_button.text_content()
+                if sort_text and "Oldest" in sort_text:
+                    console.print("[cyan]Sort order already set to Oldest[/cyan]")
+                else:
+                    await sort_button.click()
+                    await page.wait_for_timeout(500)
+                    # Find the dropdown option by visible text (robust to overlays/portals)
+                    # Playwright text selector: 'text=Oldest', but ensure it's visible
+                    try:
+                        await page.wait_for_selector('text=Oldest', timeout=3000, state='visible')
+                        oldest_options = await page.query_selector_all('text=Oldest')
+                        clicked = False
+                        for option in oldest_options:
+                            # Only click if visible
+                            if await option.is_visible():
+                                await option.click()
+                                console.print("[cyan]🔃 Set sort order to Oldest[/cyan]")
+                                clicked = True
+                                break
+                        if not clicked:
+                            console.print("[yellow]⚠️ Could not find a visible/clickable 'Oldest' sort option[/yellow]")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠️ Error waiting for or clicking 'Oldest': {e}[/yellow]")
+            else:
+                console.print("[yellow]⚠️ Could not find sort button with 'Sort:' text[/yellow]")
+        except Exception as sort_err:
+            console.print(f"[yellow]⚠️ Error setting sort order: {sort_err}[/yellow]")
+
         return True
         
     except Exception as e:
