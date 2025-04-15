@@ -155,23 +155,24 @@ async def scroll_for_messages(page, exporter, progress=None, task_id=None):
     
     return len(processed_timestamps)
 
-async def navigate_to_next_page(page: Page) -> bool:
-    """Navigate to the next page of results. Returns True if successful."""
+async def navigate_to_next_page(page: Page, next_page_num: int) -> bool:
+    """Navigate to the next page of results using the numbered page buttons. Returns True if successful."""
     try:
-        # Look for the next page button with multiple possible selectors
-        next_button = await page.query_selector('[aria-label="Next page"], [data-qa="pagination_next"]')
+        # Build selector for the next page button
+        selector = f'[data-qa="c-pagination_page_btn_{next_page_num}"]'
+        next_button = await page.query_selector(selector)
         
         if not next_button:
-            console.print("[yellow]🛑 No next page button found[/yellow]")
+            console.print(f"[yellow]🛑 No page button found for page {next_page_num}[/yellow]")
             return False
-            
+        
         # Check if it's disabled
         is_disabled = await next_button.get_attribute('disabled') or await next_button.get_attribute('aria-disabled')
-        if is_disabled:
-            console.print("[yellow]🛑 Next page button is disabled[/yellow]")
+        if is_disabled and is_disabled != 'false':
+            console.print(f"[yellow]🛑 Page button {next_page_num} is disabled[/yellow]")
             return False
-            
-        console.print("[cyan]🔄 Moving to next page...[/cyan]")
+        
+        console.print(f"[cyan]🔄 Moving to page {next_page_num}...[/cyan]")
         await next_button.click()
         
         # Wait for new results to load
@@ -179,9 +180,8 @@ async def navigate_to_next_page(page: Page) -> bool:
         await page.wait_for_timeout(2000)  # Extra wait for stability
         
         return True
-        
     except Exception as e:
-        console.print(f"[red]❌ Error navigating to next page: {str(e)}[/red]")
+        console.print(f"[red]❌ Error navigating to page {next_page_num}: {str(e)}[/red]")
         return False
 
 async def extract_messages_from_page(page: Page):
@@ -571,9 +571,10 @@ async def process_search_results(page: Page, exporter: 'SlackSearchExport'):
                 progress.update(task, completed=messages_found)
                 total_messages += messages_found
                 
-                if messages_found == 0 or not await navigate_to_next_page(page):
+                # Pass the next page number to the navigation function
+                if messages_found == 0 or not await navigate_to_next_page(page, page_num + 1):
                     break
-                    
+                
                 page_num += 1
             
         elapsed_time = time.time() - start_time
