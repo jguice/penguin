@@ -1,3 +1,11 @@
+## [2.0.1](https://github.com/jguice/penguin/compare/v2.0.0...v2.0.1) (2025-06-25)
+
+
+### Bug Fixes
+
+* reliably set Slack search sort order to 'Oldest'\n\nUses robust Playwright selectors to ensure export is chronological regardless of UI changes. ([c7e851a](https://github.com/jguice/penguin/commit/c7e851a845e7e3339e986b1a71354aaace1d0972))
+* support Slack pagination with numbered page buttons ([eefe316](https://github.com/jguice/penguin/commit/eefe316c7b258932af9787d52f57b5f385dd687b))
+
 # [2.0.0](https://github.com/jguice/penguin/compare/v1.2.0...v2.0.0) (2024-12-04)
 
 
